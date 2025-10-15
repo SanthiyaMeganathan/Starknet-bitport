@@ -1,0 +1,140 @@
+/* --- Navbar container --- */
+.navbar {
+    display: flex;
+    justify-content: space-between; /* left links and right wallet button */
+    align-items: center;
+    padding: 12px 20px;
+    background-color: #1a1a1a;
+    color: white;
+    position: relative;
+    z-index: 100;
+}
+
+/* --- Navbar links --- */
+.nav-left a {
+    color: #fff;
+    font-weight: bold;
+    padding: 8px 12px;
+    border-radius: 6px;
+    text-decoration: none;
+    margin-right: 10px;
+    transition: background 0.3s;
+}
+
+.nav-left a.active {
+    background-color: #f7931a;
+    color: #fff;
+}
+
+.nav-left a:hover {
+    background-color: #f7931a50;
+}
+
+/* --- Wallet button --- */
+.wallet-btn {
+    padding: 8px 16px;
+    background-color: #f7931a;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: background 0.3s;
+    position: relative;
+    z-index: 101;
+}
+
+.wallet-btn.connected {
+    background-color: #4caf50; /* green when connected */
+}
+
+.wallet-btn:hover {
+    opacity: 0.9;
+}
+
+/* --- Wallet dropdown container --- */
+.wallet-container {
+    position: relative;
+}
+
+/* --- Wallet dropdown menu --- */
+.wallet-dropdown {
+    position: absolute;
+    top: 110%; /* just below the button */
+    right: 0;
+    min-width: 260px;
+    max-width: 300px;
+    background: #2a2a2a;
+    border-radius: 8px;
+    padding: 12px;
+    color: white;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+    display: none;
+    z-index: 1000;
+    transition: opacity 0.3s ease, transform 0.2s ease;
+    transform: translateY(-10px);
+    opacity: 0;
+}
+
+.wallet-dropdown.show {
+    display: block;
+    transform: translateY(0);
+    opacity: 1;
+}
+
+/* --- Wallet dropdown buttons --- */
+.wallet-dropdown button {
+    width: 100%;
+    padding: 8px 0;
+    margin-top: 8px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    background-color: #f7931a;
+    color: #fff;
+    font-weight: bold;
+    transition: background 0.3s;
+}
+
+.wallet-dropdown button:hover {
+    background-color: #fbb03b;
+}
+
+/* --- Wallet address section --- */
+.wallet-dropdown .wallet-address {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 14px;
+    padding: 6px 0;
+    border-bottom: 1px solid #444;
+}
+
+.copy-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #f7931a;
+    font-size: 14px;
+}
+
+.copy-btn:hover {
+    color: #fff;
+}
+
+/* --- Responsive behavior --- */
+@media screen and (max-width: 768px) {
+    .navbar {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .nav-left a {
+        margin-bottom: 8px;
+    }
+
+    .wallet-dropdown {
+        right: 0;
+        top: 100%;
+        min-width: 220px;
+    }
+}

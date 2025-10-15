@@ -1,0 +1,45 @@
+.home-container {
+    text-align: center;
+    padding: 40px 20px;
+    background: linear-gradient(135deg, #1E1E2F, #2C2C44);
+    color: white;
+    min-height: 80vh;
+}
+
+.home-container h1 {
+    font-size: 3rem;
+    margin-bottom: 20px;
+}
+
+.home-container p {
+    font-size: 1.2rem;
+    margin-bottom: 40px;
+}
+
+.features {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 20px;
+}
+
+.feature-card {
+    background-color: #2C2C44;
+    padding: 20px;
+    border-radius: 15px;
+    width: 220px;
+    transition: transform 0.2s;
+}
+
+.feature-card:hover {
+    transform: translateY(-5px);
+}
+
+.feature-card h2 {
+    margin-bottom: 10px;
+    color: #FFD700;
+}
+
+.feature-card p {
+    font-size: 0.95rem;
+}
