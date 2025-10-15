@@ -3,7 +3,7 @@ import '../styles/modal.css';
 import { WalletContext } from '../context/WalletContext';
 
 const WalletConnectModal = ({ onClose, onConnect, onSwitch }) => {
-    const { accountsList, walletConnected } = useContext(WalletContext);
+    const { accountsList, walletConnected, activeAccount } = useContext(WalletContext);
 
     return (
         <div className="modal-backdrop">
@@ -15,9 +15,12 @@ const WalletConnectModal = ({ onClose, onConnect, onSwitch }) => {
                         {accountsList.map((acc, idx) => (
                             <li key={idx} style={{ marginBottom: '10px' }}>
                                 <button
-                                    onClick={() => onSwitch(acc)}
+                                    disabled={acc.address === activeAccount?.address}
+                                    onClick={() => onSwitch(idx)}
                                 >
-                                    Switch: {acc.name} ({acc.address})
+                                    {acc.address === activeAccount?.address
+                                        ? `Active: ${acc.name} (${acc.address})`
+                                        : `Switch: ${acc.name} (${acc.address})`}
                                 </button>
                             </li>
                         ))}

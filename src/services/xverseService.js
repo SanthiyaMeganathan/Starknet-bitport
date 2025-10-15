@@ -3,6 +3,21 @@ import { request, AddressPurpose } from 'sats-connect';
 
 let currentAccount = null;
 let accountsList = []; // store multiple addresses
+const DESIRED_NETWORK = 'Testnet4'; // the network your app expects
+
+// -------------------------
+// 0. Helper: check wallet network
+// -------------------------
+const checkNetwork = async (btcProvider) => {
+  if (!btcProvider?.network) return null;
+  try {
+    const info = await btcProvider.request?.({ method: 'getNetwork' });
+    return info?.type || null;
+  } catch (err) {
+    console.warn('Unable to detect wallet network:', err);
+    return null;
+  }
+};
 
 // -------------------------
 // 1. Connect Wallet
@@ -13,22 +28,43 @@ export const connectWallet = async () => {
     if (window.XverseProviders?.BitcoinProvider) {
       const btcProvider = window.XverseProviders.BitcoinProvider;
 
+      // Check wallet network first
+      const walletNetwork = await checkNetwork(btcProvider);
+      if (walletNetwork && walletNetwork !== DESIRED_NETWORK) {
+        throw new Error(
+          `Xverse wallet is on "${walletNetwork}". Please switch to "${DESIRED_NETWORK}".`
+        );
+      }
+
       // Trigger wallet connection
       const response = await btcProvider.connect({
-        network: {
-          type: 'Testnet', // or 'Mainnet'
-        },
+        network: { type: DESIRED_NETWORK },
         message: 'Connect your Xverse wallet to this app',
       });
 
-      console.log('✅ Wallet connected via XverseProviders:', response);
+      console.log('Raw Xverse response:', response);
+      console.log('🟢 Raw Xverse response:', response); // << log here
 
-      accountsList = response.addresses.map((addr) => ({
+      // Normalize addresses array safely
+      const addresses =
+        response?.addresses ||
+        response?.result?.addresses ||
+        [];
+
+      if (!addresses.length) {
+        throw new Error(
+          'No addresses returned from Xverse Wallet. Did you cancel or is the wallet locked?'
+        );
+      }
+
+      // Map addresses
+      accountsList = addresses.map((addr) => ({
         name: 'Xverse Wallet',
         address: addr.address,
       }));
 
       currentAccount = accountsList[0]; // default to first account
+      console.log('✅ Wallet connected via XverseProviders:', currentAccount);
       return { currentAccount, accountsList };
     }
 
@@ -40,14 +76,14 @@ export const connectWallet = async () => {
     const legacyResponse = await request('wallet_connect', {
       addresses: ['payment'],
       message: 'Connect your wallet to our app',
-      network: 'testnet',
+      network: DESIRED_NETWORK.toLowerCase(),
     });
 
-    if (legacyResponse.status !== 'success') {
-      throw new Error('Connection failed');
-    }
+    console.log('Legacy sats-connect response:', legacyResponse);
 
-    const paymentAddress = legacyResponse.result.addresses.find(
+    // Safely access addresses
+    const legacyAddresses = legacyResponse.result?.addresses || [];
+    const paymentAddress = legacyAddresses.find(
       (addr) => addr.purpose === AddressPurpose.Payment
     );
 
@@ -91,7 +127,10 @@ export const switchAccount = async (accountIndex) => {
         method: 'wallet_switchAccount',
         params: { address: currentAccount.address },
       }).catch((err) => {
-        console.warn('Wallet switch request failed (may not be supported):', err);
+        console.warn(
+          'Wallet switch request failed (may not be supported):',
+          err
+        );
       });
     }
 
