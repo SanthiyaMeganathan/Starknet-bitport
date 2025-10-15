@@ -1,42 +1,45 @@
-import React, { useContext, useState, useRef, useEffect } from 'react';
+import React, { useContext, useState, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import '../styles/navbar.css';
 import { WalletContext } from '../context/WalletContext';
 import WalletConnectModal from './WalletConnectModal';
-import { request, AddressPurpose, RpcErrorCode } from 'sats-connect';
+
+import { connectWallet as xverseConnect } from '../services/xverseService';
 
 const Navbar = () => {
     const location = useLocation();
-    const { 
-        walletConnected, 
-        activeAccount, 
-        accountsList, 
-        connectWallet: contextConnect, 
-        switchAccount, 
-        btcBalance 
-    } = useContext(WalletContext);
-
+    const { walletConnected, activeAccount, accountsList, connectWallet: contextConnect, switchAccount } = useContext(WalletContext);
     const [modalOpen, setModalOpen] = useState(false);
     const [dropdownVisible, setDropdownVisible] = useState(false);
     const dropdownRef = useRef(null);
 
-    // Connect wallet
-    const handleConnect = () => {
-        contextConnect();
-        setDropdownVisible(true);
-        setModalOpen(false);
+    // Connect wallet via Xverse
+    const handleConnect = async () => {
+        try {
+            const { currentAccount, accountsList } = await xverseConnect();
+            contextConnect(currentAccount, accountsList);
+            setDropdownVisible(true);
+            setModalOpen(false);
+        } catch (err) {
+            console.error("Wallet connect failed:", err);
+        }
     };
 
     // Disconnect wallet
     const handleDisconnect = () => {
-        contextConnect(null);
+        contextConnect(null, []);
         setDropdownVisible(false);
     };
 
-    // Change wallet
-    const handleChangeWallet = () => {
-        contextConnect();
-        setDropdownVisible(true);
+    // Switch account
+    const handleSwitchAccount = async (index) => {
+        try {
+            const switchedAccount = await switchAccount(index);
+            console.log("Switched account:", switchedAccount);
+            setDropdownVisible(false);
+        } catch (err) {
+            console.error("Switch account failed:", err);
+        }
     };
 
     // Copy wallet address
@@ -45,12 +48,6 @@ const Navbar = () => {
             navigator.clipboard.writeText(activeAccount.address);
             alert("Address copied!");
         }
-    };
-
-    // Switch account (legacy)
-    const handleSwitch = (acc) => {
-        switchAccount(acc);
-        setModalOpen(false);
     };
 
     return (
@@ -82,14 +79,25 @@ const Navbar = () => {
                     {walletConnected && (
                         <div className={`wallet-dropdown ${dropdownVisible ? 'show' : ''}`} ref={dropdownRef}>
                             <div className="wallet-address">
-                                <span>Address: {activeAccount?.address}</span>
+                                Address: {activeAccount?.address}
                                 <button className="copy-btn" onClick={handleCopy}>📋</button>
                             </div>
-                            <div className="wallet-balance">
-                                BTC Balance: {btcBalance} sats
-                            </div>
+
+                            {/* List of all connected accounts */}
+                            {accountsList?.length > 1 && (
+                                <div className="accounts-list">
+                                    {accountsList.map((acc, index) => (
+                                        <div key={index} className={`account-item ${acc.address === activeAccount.address ? 'active' : ''}`}>
+                                            {acc.address}
+                                            {acc.address !== activeAccount.address && (
+                                                <button onClick={() => handleSwitchAccount(index)}>Switch</button>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
                             <button onClick={handleDisconnect}>Disconnect Wallet</button>
-                            <button onClick={handleChangeWallet}>Change Wallet</button>
                         </div>
                     )}
                 </div>
@@ -101,7 +109,7 @@ const Navbar = () => {
                     accountsList={accountsList}
                     onClose={() => setModalOpen(false)}
                     onConnect={handleConnect}
-                    onSwitch={handleSwitch}
+                    onSwitch={handleSwitchAccount}
                 />
             )}
         </>

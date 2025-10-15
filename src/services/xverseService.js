@@ -1,34 +1,70 @@
-import { request, AddressPurpose, RpcErrorCode } from 'sats-connect';
+// src/services/xverseService.js
+import { request, AddressPurpose } from 'sats-connect';
 
 let currentAccount = null;
+let accountsList = []; // store multiple addresses
 
 // -------------------------
 // 1. Connect Wallet
 // -------------------------
 export const connectWallet = async () => {
   try {
-    // Request read access permissions
-    const perm = await request('wallet_requestPermissions');
-    if (perm.status === 'error') throw new Error('Permission denied');
+    // Use XverseProviders if available
+    if (window.XverseProviders?.BitcoinProvider) {
+      const btcProvider = window.XverseProviders.BitcoinProvider;
 
-    // Fetch user's Bitcoin addresses
-    const response = await request('getAddresses', { purposes: ['payment', 'ordinals'] });
-    if (response.status !== 'success') throw new Error('Failed to fetch addresses');
+      // Trigger wallet connection
+      const response = await btcProvider.connect({
+        network: {
+          type: 'Testnet', // or 'Mainnet'
+        },
+        message: 'Connect your Xverse wallet to this app',
+      });
 
-    const paymentAddress = response.result.find(addr => addr.purpose === AddressPurpose.Payment);
-    const ordinalsAddress = response.result.find(addr => addr.purpose === AddressPurpose.Ordinals);
+      console.log('✅ Wallet connected via XverseProviders:', response);
 
-    if (!paymentAddress) throw new Error('Payment address not found');
+      accountsList = response.addresses.map((addr) => ({
+        name: 'Xverse Wallet',
+        address: addr.address,
+      }));
+
+      currentAccount = accountsList[0]; // default to first account
+      return { currentAccount, accountsList };
+    }
+
+    // Fallback to legacy sats-connect method
+    if (!window.xverse) {
+      throw new Error('Xverse Wallet not detected. Please install it.');
+    }
+
+    const legacyResponse = await request('wallet_connect', {
+      addresses: ['payment'],
+      message: 'Connect your wallet to our app',
+      network: 'testnet',
+    });
+
+    if (legacyResponse.status !== 'success') {
+      throw new Error('Connection failed');
+    }
+
+    const paymentAddress = legacyResponse.result.addresses.find(
+      (addr) => addr.purpose === AddressPurpose.Payment
+    );
+
+    if (!paymentAddress) {
+      throw new Error('Payment address not found');
+    }
 
     currentAccount = {
       name: 'Xverse Wallet',
       address: paymentAddress.address,
-      ordinalsAddress: ordinalsAddress?.address || null,
     };
+    accountsList = [currentAccount];
 
-    return { currentAccount };
+    console.log('✅ Wallet connected via legacy sats-connect:', currentAccount);
+    return { currentAccount, accountsList };
   } catch (err) {
-    console.error('Wallet connect error:', err);
+    console.error('❌ Wallet connect error:', err);
     throw err;
   }
 };
@@ -36,10 +72,35 @@ export const connectWallet = async () => {
 // -------------------------
 // 2. Switch Account
 // -------------------------
-export const switchAccount = (account) => {
-  if (!account) throw new Error('Account required');
-  currentAccount = account;
-  return currentAccount;
+export const switchAccount = async (accountIndex) => {
+  try {
+    if (!accountsList || accountsList.length === 0) {
+      throw new Error('No accounts available to switch');
+    }
+
+    if (accountIndex < 0 || accountIndex >= accountsList.length) {
+      throw new Error('Invalid account index');
+    }
+
+    // Update current account
+    currentAccount = accountsList[accountIndex];
+
+    // Optional: trigger wallet provider to switch (if supported)
+    if (window.XverseProviders?.BitcoinProvider?.request) {
+      await window.XverseProviders.BitcoinProvider.request({
+        method: 'wallet_switchAccount',
+        params: { address: currentAccount.address },
+      }).catch((err) => {
+        console.warn('Wallet switch request failed (may not be supported):', err);
+      });
+    }
+
+    console.log('Switched to account:', currentAccount);
+    return currentAccount;
+  } catch (err) {
+    console.error('Error switching account:', err);
+    throw err;
+  }
 };
 
 // -------------------------
@@ -48,10 +109,16 @@ export const switchAccount = (account) => {
 export const getBTCBalance = async () => {
   if (!currentAccount) throw new Error('Wallet not connected');
   try {
-    const balanceRes = await request('getBalance');
-    if (balanceRes.status !== 'success') throw new Error('Failed to fetch balance');
+    const balanceResponse = await request('getBalance', {
+      address: currentAccount.address,
+      asset: 'BTC',
+    });
 
-    return balanceRes.result.total || '0';
+    if (balanceResponse.status !== 'success') {
+      throw new Error('Failed to fetch balance');
+    }
+
+    return balanceResponse.result.total || '0';
   } catch (err) {
     console.error('Error fetching BTC balance:', err);
     return '0';
@@ -61,18 +128,60 @@ export const getBTCBalance = async () => {
 // -------------------------
 // 4. Send BTC
 // -------------------------
-export const sendBTC = async (recipients) => {
+export const sendBTC = async (recipientAddress, amountBTC, memo = '') => {
   if (!currentAccount) throw new Error('Wallet not connected');
   try {
-    const tx = await request('sendTransfer', { recipients });
-    if (tx.status !== 'success') throw new Error('Send transfer failed');
-    return tx.result.txid;
+    const tx = await request('sendTransfer', {
+      from: currentAccount.address,
+      to: recipientAddress,
+      amount: amountBTC,
+      memo,
+    });
+    console.log('BTC sent:', tx);
+    return tx;
   } catch (err) {
     console.error('Error sending BTC:', err);
     throw err;
   }
 };
 
+// -------------------------
+// 5. Bridge BTC to Starknet
+// -------------------------
 export const bridgeBTCToStarknet = async (amountBTC) => {
-    // your code here
+  if (!currentAccount) throw new Error('Wallet not connected');
+  try {
+    const tx = await request('sendTransfer', {
+      from: currentAccount.address,
+      to: 'starknet-bridge-address',
+      amount: amountBTC,
+      memo: 'Bridge BTC to Starknet',
+    });
+    console.log('Bridged BTC to Starknet:', tx);
+    return tx;
+  } catch (err) {
+    console.error('Error bridging BTC:', err);
+    throw err;
+  }
+};
+
+// -------------------------
+// 6. Get Transaction History
+// -------------------------
+export const getTxHistory = async () => {
+  if (!currentAccount) throw new Error('Wallet not connected');
+  try {
+    const historyResponse = await request('getTransactions', {
+      address: currentAccount.address,
+    });
+
+    if (historyResponse.status !== 'success') {
+      throw new Error('Failed to fetch transaction history');
+    }
+
+    return historyResponse.result.transactions || [];
+  } catch (err) {
+    console.error('Error fetching transactions:', err);
+    return [];
+  }
 };
