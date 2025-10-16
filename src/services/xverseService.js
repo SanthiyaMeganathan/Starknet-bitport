@@ -2,106 +2,71 @@
 import { request, AddressPurpose } from 'sats-connect';
 
 let currentAccount = null;
-let accountsList = []; // store multiple addresses
-const DESIRED_NETWORK = 'Testnet4'; // the network your app expects
+let accountsList = [];
 
 // -------------------------
-// 0. Helper: check wallet network
-// -------------------------
-const checkNetwork = async (btcProvider) => {
-  if (!btcProvider?.network) return null;
-  try {
-    const info = await btcProvider.request?.({ method: 'getNetwork' });
-    return info?.type || null;
-  } catch (err) {
-    console.warn('Unable to detect wallet network:', err);
-    return null;
-  }
-};
-
-// -------------------------
-// 1. Connect Wallet
+// 1. Connect Wallet (Fixed)
 // -------------------------
 export const connectWallet = async () => {
   try {
-    // Use XverseProviders if available
-    if (window.XverseProviders?.BitcoinProvider) {
-      const btcProvider = window.XverseProviders.BitcoinProvider;
-
-      // Check wallet network first
-      const walletNetwork = await checkNetwork(btcProvider);
-      if (walletNetwork && walletNetwork !== DESIRED_NETWORK) {
-        throw new Error(
-          `Xverse wallet is on "${walletNetwork}". Please switch to "${DESIRED_NETWORK}".`
-        );
-      }
-
-      // Trigger wallet connection
-      const response = await btcProvider.connect({
-        network: { type: DESIRED_NETWORK },
-        message: 'Connect your Xverse wallet to this app',
-      });
-
-      console.log('Raw Xverse response:', response);
-      console.log('🟢 Raw Xverse response:', response); // << log here
-
-      // Normalize addresses array safely
-      const addresses =
-        response?.addresses ||
-        response?.result?.addresses ||
-        [];
-
-      if (!addresses.length) {
-        throw new Error(
-          'No addresses returned from Xverse Wallet. Did you cancel or is the wallet locked?'
-        );
-      }
-
-      // Map addresses
-      accountsList = addresses.map((addr) => ({
-        name: 'Xverse Wallet',
-        address: addr.address,
-      }));
-
-      currentAccount = accountsList[0]; // default to first account
-      console.log('✅ Wallet connected via XverseProviders:', currentAccount);
-      return { currentAccount, accountsList };
+    // Check if Xverse is installed
+    if (!window.XverseProviders?.BitcoinProvider) {
+      throw new Error('Xverse Wallet not detected. Please install the Xverse extension.');
     }
 
-    // Fallback to legacy sats-connect method
-    if (!window.xverse) {
-      throw new Error('Xverse Wallet not detected. Please install it.');
-    }
+    const btcProvider = window.XverseProviders.BitcoinProvider;
 
-    const legacyResponse = await request('wallet_connect', {
-      addresses: ['payment'],
-      message: 'Connect your wallet to our app',
-      network: DESIRED_NETWORK.toLowerCase(),
+    // Request connection with proper parameters
+    const response = await btcProvider.request('getAccounts', {
+      purposes: ['payment', 'ordinals'],
+      message: 'Connect your Xverse wallet to BitBuddy',
     });
 
-    console.log('Legacy sats-connect response:', legacyResponse);
+    console.log('🟢 Xverse connection response:', response);
 
-    // Safely access addresses
-    const legacyAddresses = legacyResponse.result?.addresses || [];
-    const paymentAddress = legacyAddresses.find(
-      (addr) => addr.purpose === AddressPurpose.Payment
-    );
-
-    if (!paymentAddress) {
-      throw new Error('Payment address not found');
+    // Handle the response safely
+    if (!response || !response.result) {
+      throw new Error('No response from wallet');
     }
 
-    currentAccount = {
-      name: 'Xverse Wallet',
-      address: paymentAddress.address,
-    };
-    accountsList = [currentAccount];
+    // Extract addresses from the result
+    const addresses = response.result;
+    
+    if (!Array.isArray(addresses) || addresses.length === 0) {
+      throw new Error('No addresses found in wallet response');
+    }
 
-    console.log('✅ Wallet connected via legacy sats-connect:', currentAccount);
+    // Find payment address
+    const paymentAddr = addresses.find(addr => addr.purpose === 'payment');
+    
+    if (!paymentAddr) {
+      throw new Error('No payment address found');
+    }
+
+    // Map to your account format
+    accountsList = [{
+      name: 'Xverse Wallet',
+      address: paymentAddr.address,
+      publicKey: paymentAddr.publicKey || '',
+      purpose: paymentAddr.purpose
+    }];
+
+    currentAccount = accountsList[0];
+    
+    console.log('✅ Wallet connected successfully:', currentAccount);
     return { currentAccount, accountsList };
+
   } catch (err) {
     console.error('❌ Wallet connect error:', err);
-    throw err;
+    
+    // Provide user-friendly error messages
+    if (err.message.includes('User rejected')) {
+      throw new Error('Connection rejected. Please approve the connection in your Xverse wallet.');
+    } else if (err.message.includes('not detected')) {
+      throw err;
+    } else {
+      throw new Error('Failed to connect wallet. Please try again.');
+    }
   }
 };
 
@@ -118,22 +83,7 @@ export const switchAccount = async (accountIndex) => {
       throw new Error('Invalid account index');
     }
 
-    // Update current account
     currentAccount = accountsList[accountIndex];
-
-    // Optional: trigger wallet provider to switch (if supported)
-    if (window.XverseProviders?.BitcoinProvider?.request) {
-      await window.XverseProviders.BitcoinProvider.request({
-        method: 'wallet_switchAccount',
-        params: { address: currentAccount.address },
-      }).catch((err) => {
-        console.warn(
-          'Wallet switch request failed (may not be supported):',
-          err
-        );
-      });
-    }
-
     console.log('Switched to account:', currentAccount);
     return currentAccount;
   } catch (err) {
@@ -147,17 +97,24 @@ export const switchAccount = async (accountIndex) => {
 // -------------------------
 export const getBTCBalance = async () => {
   if (!currentAccount) throw new Error('Wallet not connected');
+  
   try {
-    const balanceResponse = await request('getBalance', {
+    const btcProvider = window.XverseProviders.BitcoinProvider;
+    
+    const balanceResponse = await btcProvider.request('getBalance', {
       address: currentAccount.address,
-      asset: 'BTC',
     });
 
-    if (balanceResponse.status !== 'success') {
-      throw new Error('Failed to fetch balance');
+    console.log('Balance response:', balanceResponse);
+
+    if (balanceResponse && balanceResponse.result) {
+      // Convert satoshis to BTC (1 BTC = 100,000,000 satoshis)
+      const balanceInSats = balanceResponse.result.confirmed || 0;
+      const balanceInBTC = (balanceInSats / 100000000).toFixed(8);
+      return balanceInBTC;
     }
 
-    return balanceResponse.result.total || '0';
+    return '0';
   } catch (err) {
     console.error('Error fetching BTC balance:', err);
     return '0';
@@ -169,13 +126,24 @@ export const getBTCBalance = async () => {
 // -------------------------
 export const sendBTC = async (recipientAddress, amountBTC, memo = '') => {
   if (!currentAccount) throw new Error('Wallet not connected');
+  
   try {
-    const tx = await request('sendTransfer', {
-      from: currentAccount.address,
-      to: recipientAddress,
-      amount: amountBTC,
-      memo,
+    const btcProvider = window.XverseProviders.BitcoinProvider;
+    
+    // Convert BTC to satoshis
+    const amountInSats = Math.floor(parseFloat(amountBTC) * 100000000);
+
+    const tx = await btcProvider.request('sendTransfer', {
+      recipients: [
+        {
+          address: recipientAddress,
+          amount: amountInSats,
+        }
+      ],
+      senderAddress: currentAccount.address,
+      message: memo,
     });
+
     console.log('BTC sent:', tx);
     return tx;
   } catch (err) {
@@ -185,23 +153,14 @@ export const sendBTC = async (recipientAddress, amountBTC, memo = '') => {
 };
 
 // -------------------------
-// 5. Bridge BTC to Starknet
+// 5. Bridge BTC to Starknet (Placeholder)
 // -------------------------
 export const bridgeBTCToStarknet = async (amountBTC) => {
   if (!currentAccount) throw new Error('Wallet not connected');
-  try {
-    const tx = await request('sendTransfer', {
-      from: currentAccount.address,
-      to: 'starknet-bridge-address',
-      amount: amountBTC,
-      memo: 'Bridge BTC to Starknet',
-    });
-    console.log('Bridged BTC to Starknet:', tx);
-    return tx;
-  } catch (err) {
-    console.error('Error bridging BTC:', err);
-    throw err;
-  }
+  
+  // Note: This is a placeholder. Actual bridging requires integration with a bridge protocol
+  console.warn('Bridge functionality not yet implemented');
+  throw new Error('Bridge functionality coming soon');
 };
 
 // -------------------------
@@ -209,18 +168,44 @@ export const bridgeBTCToStarknet = async (amountBTC) => {
 // -------------------------
 export const getTxHistory = async () => {
   if (!currentAccount) throw new Error('Wallet not connected');
+  
   try {
-    const historyResponse = await request('getTransactions', {
+    const btcProvider = window.XverseProviders.BitcoinProvider;
+    
+    const historyResponse = await btcProvider.request('getTransactions', {
       address: currentAccount.address,
     });
 
-    if (historyResponse.status !== 'success') {
-      throw new Error('Failed to fetch transaction history');
+    if (historyResponse && historyResponse.result) {
+      return historyResponse.result;
     }
 
-    return historyResponse.result.transactions || [];
+    return [];
   } catch (err) {
     console.error('Error fetching transactions:', err);
     return [];
   }
+};
+
+// -------------------------
+// 7. Disconnect Wallet
+// -------------------------
+export const disconnectWallet = () => {
+  currentAccount = null;
+  accountsList = [];
+  console.log('Wallet disconnected');
+};
+
+// -------------------------
+// 8. Get Current Account
+// -------------------------
+export const getCurrentAccount = () => {
+  return currentAccount;
+};
+
+// -------------------------
+// 9. Check if Wallet is Installed
+// -------------------------
+export const isWalletInstalled = () => {
+  return !!window.XverseProviders?.BitcoinProvider;
 };

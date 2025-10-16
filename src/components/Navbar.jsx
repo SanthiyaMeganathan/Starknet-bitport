@@ -1,118 +1,159 @@
-import React, { useContext, useState, useRef } from 'react';
+// src/components/Navbar.jsx
+import React, { useContext, useState, useRef, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import '../styles/navbar.css';
 import { WalletContext } from '../context/WalletContext';
-import WalletConnectModal from './WalletConnectModal';
-
-import { connectWallet as xverseConnect } from '../services/xverseService';
 
 const Navbar = () => {
     const location = useLocation();
-    const { walletConnected, activeAccount, accountsList, connectWallet: contextConnect, switchAccount } = useContext(WalletContext);
-    const [modalOpen, setModalOpen] = useState(false);
+    const { 
+        walletConnected, 
+        activeAccount, 
+        accountsList, 
+        connectWallet, 
+        disconnectWallet,
+        switchAccount,
+        isConnecting,
+        error 
+    } = useContext(WalletContext);
+    
     const [dropdownVisible, setDropdownVisible] = useState(false);
     const dropdownRef = useRef(null);
 
-    // Connect wallet via Xverse
+    // Handle wallet connection
     const handleConnect = async () => {
         try {
-            const { currentAccount, accountsList } = await xverseConnect();
-            contextConnect(currentAccount, accountsList);
+            await connectWallet();
             setDropdownVisible(true);
-            setModalOpen(false);
         } catch (err) {
             console.error("Wallet connect failed:", err);
+            alert(`Connection failed: ${err.message}`);
         }
     };
 
-    // Disconnect wallet
+    // Handle wallet disconnection
     const handleDisconnect = () => {
-        contextConnect(null, []);
+        disconnectWallet();
         setDropdownVisible(false);
     };
 
-    // Switch account
+    // Handle account switch
     const handleSwitchAccount = async (index) => {
         try {
-            const switchedAccount = await switchAccount(index);
-            console.log("Switched account:", switchedAccount);
+            await switchAccount(index);
             setDropdownVisible(false);
         } catch (err) {
             console.error("Switch account failed:", err);
+            alert(`Switch failed: ${err.message}`);
         }
     };
 
-    // Copy wallet address
+    // Copy wallet address to clipboard
     const handleCopy = () => {
         if (activeAccount?.address) {
             navigator.clipboard.writeText(activeAccount.address);
-            alert("Address copied!");
+            alert("Address copied to clipboard!");
         }
     };
 
+    // Format address for display (show first 6 and last 4 characters)
+    const formatAddress = (address) => {
+        if (!address) return '';
+        return `${address.slice(0, 6)}...${address.slice(-4)}`;
+    };
+
+    // Close dropdown when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+                setDropdownVisible(false);
+            }
+        };
+
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, []);
+
     return (
-        <>
-            <nav className="navbar">
-                {/* Left-side links */}
-                <div className="nav-left">
-                    <Link className={location.pathname === '/' ? 'active' : ''} to="/">🏠 Home</Link>
-                    <Link className={location.pathname === '/dashboard' ? 'active' : ''} to="/dashboard">📊 Dashboard</Link>
-                    <Link className={location.pathname === '/send' ? 'active' : ''} to="/send">✉️ Send BTC</Link>
-                    <Link className={location.pathname === '/bridge' ? 'active' : ''} to="/bridge">🌉 Bridge BTC</Link>
-                    <Link className={location.pathname === '/savings' ? 'active' : ''} to="/savings">💰 Savings</Link>
-                    <Link className={location.pathname === '/badges' ? 'active' : ''} to="/badges">🏅 Badges</Link>
-                </div>
+        <nav className="navbar">
+            {/* Left-side navigation links */}
+            <div className="nav-left">
+                <Link className={location.pathname === '/' ? 'active' : ''} to="/">
+                    🏠 Home
+                </Link>
+                <Link className={location.pathname === '/dashboard' ? 'active' : ''} to="/dashboard">
+                    📊 Dashboard
+                </Link>
+                <Link className={location.pathname === '/send' ? 'active' : ''} to="/send">
+                    ✉️ Send BTC
+                </Link>
+                <Link className={location.pathname === '/bridge' ? 'active' : ''} to="/bridge">
+                    🌉 Bridge BTC
+                </Link>
+                <Link className={location.pathname === '/savings' ? 'active' : ''} to="/savings">
+                    💰 Savings
+                </Link>
+                <Link className={location.pathname === '/badges' ? 'active' : ''} to="/badges">
+                    🏅 Badges
+                </Link>
+            </div>
 
-                {/* Wallet Button */}
-                <div 
-                    className="wallet-container"
-                    onMouseEnter={() => walletConnected && setDropdownVisible(true)}
-                    onMouseLeave={() => setDropdownVisible(false)}
+            {/* Wallet connection button and dropdown */}
+            <div className="wallet-container" ref={dropdownRef}>
+                <button 
+                    className={`wallet-btn ${walletConnected ? 'connected' : ''}`}
+                    onClick={walletConnected ? () => setDropdownVisible(!dropdownVisible) : handleConnect}
+                    disabled={isConnecting}
                 >
-                    <button 
-                        className={`wallet-btn ${walletConnected ? 'connected' : ''}`}
-                        onClick={handleConnect}
-                    >
-                        {walletConnected ? "Connected" : "Connect Wallet"}
-                    </button>
+                    {isConnecting ? 'Connecting...' : walletConnected ? formatAddress(activeAccount?.address) : 'Connect Wallet'}
+                </button>
 
-                    {walletConnected && (
-                        <div className={`wallet-dropdown ${dropdownVisible ? 'show' : ''}`} ref={dropdownRef}>
-                            <div className="wallet-address">
-                                Address: {activeAccount?.address}
-                                <button className="copy-btn" onClick={handleCopy}>📋</button>
-                            </div>
-
-                            {/* List of all connected accounts */}
-                            {accountsList?.length > 1 && (
-                                <div className="accounts-list">
-                                    {accountsList.map((acc, index) => (
-                                        <div key={index} className={`account-item ${acc.address === activeAccount.address ? 'active' : ''}`}>
-                                            {acc.address}
-                                            {acc.address !== activeAccount.address && (
-                                                <button onClick={() => handleSwitchAccount(index)}>Switch</button>
-                                            )}
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-
-                            <button onClick={handleDisconnect}>Disconnect Wallet</button>
+                {/* Dropdown menu for connected wallet */}
+                {walletConnected && dropdownVisible && (
+                    <div className="wallet-dropdown show">
+                        <div className="wallet-address">
+                            <span>Address: {activeAccount?.address}</span>
+                            <button className="copy-btn" onClick={handleCopy} title="Copy address">
+                                📋
+                            </button>
                         </div>
-                    )}
-                </div>
-            </nav>
 
-            {/* Legacy WalletConnectModal */}
-            {modalOpen && (
-                <WalletConnectModal
-                    accountsList={accountsList}
-                    onClose={() => setModalOpen(false)}
-                    onConnect={handleConnect}
-                    onSwitch={handleSwitchAccount}
-                />
-            )}
-        </>
+                        {/* Show multiple accounts if available */}
+                        {accountsList?.length > 1 && (
+                            <div className="accounts-list">
+                                <p className="accounts-title">Switch Account:</p>
+                                {accountsList.map((acc, index) => (
+                                    <div 
+                                        key={index} 
+                                        className={`account-item ${acc.address === activeAccount?.address ? 'active' : ''}`}
+                                    >
+                                        <span>{formatAddress(acc.address)}</span>
+                                        {acc.address !== activeAccount?.address && (
+                                            <button onClick={() => handleSwitchAccount(index)}>
+                                                Switch
+                                            </button>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        <button className="disconnect-btn" onClick={handleDisconnect}>
+                            Disconnect Wallet
+                        </button>
+                    </div>
+                )}
+
+                {/* Show error message if any */}
+                {error && !dropdownVisible && (
+                    <div className="wallet-error">
+                        {error}
+                    </div>
+                )}
+            </div>
+        </nav>
     );
 };
 
